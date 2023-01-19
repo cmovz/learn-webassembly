@@ -1,0 +1,234 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Wasm Tetris Clone</title>
+    <style>
+      html, body {
+        height: 100%;
+        background-color: black;
+        display: flex;
+        flex-direction: column;
+        color: white;
+        font-family: sans-serif;
+        font-size: 28px;
+      }
+      #score-container, #grid-container {
+        text-align: center;
+      }
+      table {
+        margin: 0 auto;
+      }
+      td {
+        background-color: gray;
+        width: 20px;
+        height: 20px;
+      }
+      td.filled {
+        background-color: green;
+      }
+      button {
+        border: 0;
+        outline-width: 0;
+        border-radius: 32px;
+        background-color: green;
+        color: white;
+        margin: 16px;
+        padding: 16px;
+        width: calc(320px - 32px);
+        cursor: pointer;
+        font-size: 28px;
+      }
+      #game {
+        display: none;
+        margin: auto;
+      }
+      #intro {
+        margin: auto;
+      }
+      #play-again-button {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="game">
+      <div id="score-container">Score: <span id="score">0</span></div>
+      <div id="grid-container">
+        <!-- table goes here -->
+      </div>
+      <button onclick="toggleAi()" id="toggle-ai-button">Toggle AI</button>
+      <button onclick="playAgain()" id="play-again-button">Play Again</button>
+    </div>
+    <div id="intro">
+      <button onclick="playGame()" id="play-game-button">Play Game</button>
+    </div>
+    <script>
+      const WIDTH = 10 + 2;
+      const HEIGHT = 20 + 2;
+      let wasmLoaded = false;
+      let aiEnabled = false;
+
+      function toggleAi() {
+        aiEnabled = !aiEnabled;
+        SetAiEnabled(aiEnabled);
+      }
+
+      function startGame() {
+        StartGame(BigInt(new Date().getTime()));
+        Render(js_grid_ptr);
+
+        let interval = setInterval(() => {
+          if (!UpdateGameState(BigInt(new Date().getTime()))) {
+            clearInterval(interval);
+            let gridContainer = document.getElementById('grid-container');
+            gridContainer.innerText = 'Game Over';
+            document.getElementById('play-again-button').style.display = 
+              'block';
+            
+            return;
+          }
+          Render(js_grid_ptr);
+        }, 1);
+      }
+
+      function playGame() {
+        if (!wasmLoaded) {
+          let button = document.getElementById('play-game-button');
+          button.innerText = 'Please try again in a few seconds';
+          setTimeout(() => {
+            button.innerText = 'Play Game';
+          }, 2000);
+          return;
+        }
+        document.getElementById('game').style.display = 'block';
+        document.getElementById('intro').style.display = 'none';
+        startGame();
+      }
+
+      function playAgain() {
+        document.getElementById('play-again-button').style.display = 'none';
+        startGame();
+      }
+
+      function jsRender(gridPtr) {
+        let table = document.createElement('table');
+        for (let y = 0; y < HEIGHT; y++) {
+          let tr = document.createElement('tr');
+          for (let x = 0; x < WIDTH; x++) {
+            let td = document.createElement('td');
+            let pos = y * WIDTH + x + gridPtr;
+            let isFilled = wasmMemory[pos] !== 0;
+            if (isFilled) {
+              td.className = 'filled';
+            }
+            tr.appendChild(td);
+          }
+          table.appendChild(tr);
+        }
+        let gridContainer = document.getElementById('grid-container');
+        gridContainer.innerHTML = '';
+        gridContainer.appendChild(table);
+      }
+
+      function jsUpdateScore(score) {
+        document.getElementById('score').innerText = score;
+      }
+
+      const importObj = {
+        js: {
+          memory: new WebAssembly.Memory({ initial: 1 }),
+          jsRender,
+          jsUpdateScore,
+          random: () => {
+            let buf = new Uint32Array(1);
+            crypto.getRandomValues(buf);
+            return buf[0];
+          },
+        },
+        console: {
+          log: (offset, length) => {
+            const decoder = new TextDecoder('utf8');
+            const offsetEnd = offset + length;
+            const str = decoder.decode(wasmMemory.subarray(offset, offsetEnd));
+            console.log(str);
+          },
+          logIdx: (idx) => {
+            console.log(idx);
+          },
+        },
+      };
+      WebAssembly.instantiateStreaming(fetch('tetris_clone.wasm'), importObj)
+      .then(obj => {
+        const { exports } = obj.instance;
+        window.wasmMemory = new Uint8Array(importObj.js.memory.buffer);
+        window.Render = exports.Render;
+        window.StartGame = exports.StartGame;
+        window.SetAiEnabled = exports.SetAiEnabled;
+        window.UpdateGameState = exports.UpdateGameState;
+        window.SetLeftKeyState = exports.SetLeftKeyState;
+        window.SetRightKeyState = exports.SetRightKeyState;
+        window.SetUpKeyState = exports.SetUpKeyState;
+        window.SetDownKeyState = exports.SetDownKeyState;
+        window.SetSpaceKeyState = exports.SetSpaceKeyState;
+
+        console.log(exports);
+        WebAssembly.instantiateStreaming(fetch('tetris_data.wasm'), importObj)
+        .then(obj => {
+          const { exports } = obj.instance;
+          window.js_grid_ptr = exports.js_grid_ptr;
+
+          window.addEventListener('keydown', ev => {
+            switch (ev.key) {
+            case 'a':
+            case 'ArrowLeft':
+              SetLeftKeyState(1);
+              break;
+            case 'd':
+            case 'ArrowRight':
+              SetRightKeyState(1);
+              break;
+            case 'w':
+            case 'ArrowUp':
+              SetUpKeyState(1);
+              break;
+            case 's':
+            case 'ArrowDown':
+              SetDownKeyState(1);
+              break;
+            case ' ':
+              SetSpaceKeyState(1);
+              break;
+            }
+          });
+
+          window.addEventListener('keyup', ev => {
+            switch (ev.key) {
+            case 'a':
+            case 'ArrowLeft':
+              SetLeftKeyState(0);
+              break;
+            case 'd':
+            case 'ArrowRight':
+              SetRightKeyState(0);
+              break;
+            case 'w':
+            case 'ArrowUp':
+              SetUpKeyState(0);
+              break;
+            case 's':
+            case 'ArrowDown':
+              SetDownKeyState(0);
+              break;
+            case ' ':
+              SetSpaceKeyState(0);
+              break;
+            }
+          });
+
+          wasmLoaded = true;
+        });
+      });
+    </script>
+  </body>
+</html>
