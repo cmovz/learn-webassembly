@@ -1258,83 +1258,92 @@
       i32.const 264
       memory.copy
 
-      global.get $ai_grid_ptr
       global.get $piece
       local.get $rot
       global.get $piece_x
       global.get $piece_y
-      call $FindMinMaxX
-      local.set $max_x
-      local.set $min_x
+      global.get $ai_grid_ptr
+      call $CheckCollision
 
-      loop $x_loop
+      if
         global.get $ai_grid_ptr
-        global.get $grid_ptr
-        i32.const 264
-        memory.copy
-
+        global.get $piece
+        local.get $rot
+        global.get $piece_x
         global.get $piece_y
-        local.set $piece_y
+        call $FindMinMaxX
+        local.set $max_x
+        local.set $min_x
 
-        loop $y_loop
-          local.get $piece_y
-          i32.const 1
-          i32.add
+        loop $x_loop
+          global.get $ai_grid_ptr
+          global.get $grid_ptr
+          i32.const 264
+          memory.copy
+
+          global.get $piece_y
           local.set $piece_y
 
-          global.get $piece
-          local.get $rot
-          local.get $min_x
-          local.get $piece_y
-          global.get $ai_grid_ptr
-          call $CheckCollision
-          if
+          loop $y_loop
             local.get $piece_y
             i32.const 1
-            i32.sub
+            i32.add
             local.set $piece_y
 
-            global.get $ai_grid_ptr
             global.get $piece
+            local.get $rot
             local.get $min_x
             local.get $piece_y
-            local.get $rot
-            call $RenderPiece
-
             global.get $ai_grid_ptr
-
-            global.get $ai_grid_ptr
-            local.get $piece_y
-            call $ClearLines
-
-            call $ComputeFitness
-            local.tee $tmp
-
-            local.get $best_fitness
-            f32.gt
+            call $CheckCollision
             if
-              local.get $rot
-              global.set $ai_piece_rot
+              local.get $piece_y
+              i32.const 1
+              i32.sub
+              local.set $piece_y
 
+              global.get $ai_grid_ptr
+              global.get $piece
               local.get $min_x
-              global.set $ai_piece_x
+              local.get $piece_y
+              local.get $rot
+              call $RenderPiece
 
-              local.get $tmp
-              local.set $best_fitness
+              global.get $ai_grid_ptr
+
+              global.get $ai_grid_ptr
+              local.get $piece_y
+              call $ClearLines
+
+              call $ComputeFitness
+              local.tee $tmp
+
+              local.get $best_fitness
+              f32.gt
+              if
+                local.get $rot
+                global.set $ai_piece_rot
+
+                local.get $min_x
+                global.set $ai_piece_x
+
+                local.get $tmp
+                local.set $best_fitness
+              end
+            else
+              br $y_loop
             end
-          else
-            br $y_loop
+
           end
 
+          local.get $min_x
+          i32.const 1
+          i32.add
+          local.tee $min_x
+          local.get $max_x
+          i32.ne
+          br_if $x_loop
         end
-
-        local.get $min_x
-        i32.const 1
-        i32.add
-        local.tee $min_x
-        local.get $max_x
-        i32.ne
-        br_if $x_loop
       end
 
       local.get $rot
